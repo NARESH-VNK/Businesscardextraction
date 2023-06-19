@@ -21,7 +21,7 @@ nk = conn.cursor()
 # creating connection btwn psycopg2 and postgressql to insert a dataframe
 engine = create_engine('postgresql+psycopg2://postgres:naresh@localhost/businesscard')
 
-def biz(img):
+def bizcard(img):
 
     final = {'Name': [], 'Designation': [],  'EmailID': [], 'Website': [], 'Pincodes': [], 'Mobile_Number': []}
     reader = easyocr.Reader(['en'])
@@ -32,10 +32,10 @@ def biz(img):
 
     for i in range(2, len(results)):
       data.append(results[i][1])
-    m = []
+    mobile_no = []
     for j in data:
       if j in (re.findall(r'[+]?\d+\W+\d+\W+\d+', j)):
-        m.append(re.findall(r'[+]?\d+\W+\d+\W+\d+', j))
+        mobile_no.append(re.findall(r'[+]?\d+\W+\d+\W+\d+', j))
 
       if j in (re.findall(r'www.+[a-zA-z][^.]+\.com', j, re.IGNORECASE) or re.findall(r'www.+[a-zA-z]', j,re.IGNORECASE) or re.findall(r'[^.@]+\.com', j, re.IGNORECASE)):
         final['Website'].append((re.findall(r'www.+[a-zA-z][^.]+\.com', j, re.IGNORECASE) or re.findall(r'www.+[a-zA-z]', j,re.IGNORECASE) or re.findall(r'[^.@]+\.com', j, re.IGNORECASE))[0])
@@ -46,11 +46,10 @@ def biz(img):
       a = re.findall(r'[0-9]{6}', j)
       if len(a) == 1:
         final['Pincodes'].append(a[0])
-    final['Mobile_Number'].append(m[0][0])
-    final['Pincodes'] = pd.to_numeric(final['Pincodes'][0])
-    df = pd.DataFrame(final)
-    return (df)
+    final['Mobile_Number'].append(mobile_no[0][0])
 
+    df_final = pd.DataFrame(final)
+    return (df_final)
 
 
 content = ['About','WorkFlow',"Image and Data","Outcomes"]
@@ -74,95 +73,102 @@ if opt == 'About':
 
     st.subheader("[Sample Dataset Link](https://drive.google.com/drive/folders/1FhLOdeeQ4Bfz48JAfHrU_VXvNTRgajhp)")
 
-if opt == 'Image and Data':
-    col1, col2 = st.columns(2)
-    with col1:
-        uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
 
+if opt == 'Image and Data':
+
+    col1,col2 = st.columns([1,2])
+
+    with col1:
+        uploaded_file = st.file_uploader("Upload an Business Card Image", type=["jpg", "jpeg", "png"])
         if uploaded_file is not None:
             image = Image.open(uploaded_file)
             expander = st.expander(uploaded_file.name)
             expander.image(image, caption='Uploaded Business Card Image')
 
+            if st.button('Click to Extract Data'):
+                st.write("### Extraction Process is Initiated...")
+                outputs = bizcard(img=uploaded_file.name)
+                def insertion(df, uploaded_file):
+                    df.to_sql('bizcard', engine, if_exists='replace', index=False)
+
+                insertion(df=outputs, uploaded_file=uploaded_file)
+                st.table(outputs)
+                st.write('### Extracted Data from Above Business Card...')
+
+            if st.button("Click to Download Current Business Card Data"):
+                query = ("select * from bizcard")
+                nk.execute(query)
+                x = nk.fetchall()
+                fetch = pd.DataFrame(x, columns=['Name', 'Designation', 'Emailid', 'Website', 'Pincode', 'Mobile_number'])
+                def convert_df(df):
+                    return df.to_csv().encode('utf-8')
+                csv = convert_df(df=fetch)
+                st.download_button(
+                    label="Download data as CSV",
+                    data=csv,
+                    file_name='Existing_Bizcard.csv',
+                    mime='csv')
         else:
-            st.write("#### Upload the Business card")
+            st.write("#### Please Upload the Business card!")
 
-
-        if st.button('Click to insert Data'):
-            st.write("### Extraction Process is Initiated...")
-            output = biz(img=uploaded_file.name)
-            st.write('#### Extracted Data from Above Business Card...')
-            output.to_sql('bizcard', engine, if_exists='replace', index=False)
-            st.dataframe(output)
-
-
-
-        if st.button("Click to Download Data") :
-            query = ("select * from bizcard")
-            nk.execute(query)
-            x = nk.fetchall()
-            fetch = pd.DataFrame(x, columns=['Name', 'Designation', 'Emailid', 'Website', 'Pincodes', 'Mobile_number'])
-
-
-            def convert_df(df):
-                # IMPORTANT: Cache the conversion to prevent computation on every rerun
-                return df.to_csv().encode('utf-8')
-            csv = convert_df(df=fetch)
-            st.download_button(
-                label="Download data as CSV",
-                data=csv,
-                file_name='Bizcard.csv',
-                mime='csv')
 
 
     with col2:
-        if st.button("Click To Store In Database"):
-            db = biz(img=uploaded_file.name)
-            db.to_sql('bizcardstore', engine, if_exists='append', index=False)
-            st.write("### Data is stored ")
-
-            query = ("SELECT DISTINCT * FROM bizcardstore")
-            nk.execute(query)
-            x = nk.fetchall()
-            fetch = pd.DataFrame(x, columns=['Name', 'Designation', 'Emailid', 'Website', 'Pincodes', 'Mobile_number'])
-            st.write("### List of Data stored in Database So far")
-            container = st.container()
-            container.write(fetch)
-
-        st.write("### To delete data in database")
-        tab1,tab2 = st.tabs(['CHOOSE TO DELETE',"OUTPUT DATA"])
+        tab1, tab2, tab3,tab4 = st.tabs(['Store', 'Update', 'Delete','Single Update'])
         with tab1:
-            query = ('select distinct "Name" from bizcardstore')
-            nk.execute(query)
-            x = nk.fetchall()
-            fetch = pd.DataFrame(x,columns=["Name"])
+            if st.button("Click To Store In Database"):
+                result = bizcard(img=uploaded_file.name)
+                result.to_sql('biz_cardstore', engine, if_exists="append", index=False)
+                st.write("### Data is stored! ")
 
-
-            options = st.radio('Choose A Name To Delete From DataBase',fetch)
-
-            if st.button("DELETE"):
-                def delete(opt):
-                    query = 'DELETE FROM  bizcardstore where  "Name" =\'{choice}\''.format(choice=opt)
-                    nk.execute(query)
-                    conn.commit()
-                    query = ("SELECT DISTINCT * FROM bizcardstore")
-                    nk.execute(query)
-                    x = nk.fetchall()
-                    fetch = pd.DataFrame(x, columns=['Name', 'Designation', 'Emailid', 'Website', 'Pincodes', 'Mobile_number'])
-                    st.write("### Data After Deletion")
-                    st.write(fetch)
-
-
-                delete(opt=options)
-
-
-            with tab2:
-                query = ("SELECT DISTINCT * FROM bizcardstore")
+                query = ("SELECT DISTINCT * FROM biz_cardstore")
                 nk.execute(query)
                 x = nk.fetchall()
-                fetch = pd.DataFrame(x, columns=['Name', 'Designation', 'Emailid', 'Website', 'Pincodes', 'Mobile_number'])
-                st.write("### Total No Of  Data Stored In Database")
-                st.write(fetch)
+                fetch = pd.DataFrame(x, columns=['Name', 'Designation', 'Emailid', 'Website', 'Pincode', 'Mobile_number'])
+                st.write("### List of Unique Values stored in Database So Far")
+                container = st.container()
+                container.write(fetch)
+
+        with tab2:
+
+            st.write("## To Update Any Business Card Details")
+
+            checkboxvalue = st.checkbox("Click To Update Data")
+
+            if checkboxvalue:
+                query = ("select distinct * from biz_cardstore")
+                nk.execute(query)
+                x = nk.fetchall()
+                fetch = pd.DataFrame(x,columns=['Name', 'Designation', 'Emailid', 'Website', 'Pincode', 'Mobile_number'])
+                st.dataframe(fetch)
+
+
+
+                query = ('select distinct "Name" from biz_cardstore')
+                nk.execute(query)
+                x = nk.fetchall()
+                fetch = pd.DataFrame(x, columns=["Name"])
+
+                list_of_names = [fetch['Name'][i] for i in range(len(fetch))]
+
+                query1 = (f"SELECT column_name FROM information_schema.columns WHERE table_name = 'biz_cardstore'")
+                nk.execute(query1)
+                x = nk.fetchall()
+                column_names = [i[0] for i in x]
+
+                options = st.radio("Select Required Column Name for an Update", column_names)
+                name_options = st.radio("Select Required Name for an Update", list_of_names)
+                col = st.text_area('Enter the Data Value', str('''                  '''))
+                if st.button("UPDATE VALUE"):
+                    query2 = ('update  biz_cardstore set  \"{choice}\" = %s  where "Name" = \'{name}\'').format(name=name_options, choice=options)
+                    nk.execute(query2, (col,))
+                    conn.commit()
+
+                    query3 = ("SELECT distinct * FROM biz_cardstore")
+                    nk.execute(query3)
+                    x = nk.fetchall()
+                    fetch = pd.DataFrame(x, columns=['Name', 'Designation', 'Emailid', 'Website', 'Pincode','Mobile_number'])
+                    st.dataframe(fetch)
 
 
                 def convert_df(df):
@@ -170,12 +176,112 @@ if opt == 'Image and Data':
 
 
                 csv = convert_df(df=fetch)
-
                 st.download_button(
-                    label="Download All data as CSV",
+                    label="Download data as CSV",
                     data=csv,
-                    file_name='TotalBizcards.csv',
+                    file_name='Updated_Bizcard_Value.csv',
                     mime='csv')
+
+
+        with tab3:
+            st.write("### To delete data in database")
+            tab5,tab6 = st.tabs(['CHOOSE TO DELETE',"OUTPUT DATA"])
+            with tab5:
+                query = ('select distinct "Name" from biz_cardstore')
+                nk.execute(query)
+                x = nk.fetchall()
+                fetch = pd.DataFrame(x,columns=["Name"])
+
+
+                options = st.radio('Choose A Name To Delete From DataBase',fetch)
+
+                if st.button("DELETE"):
+                    def delete(opt):
+                        query = 'DELETE FROM  biz_cardstore where  "Name" =\'{choice}\''.format(choice=opt)
+                        nk.execute(query)
+                        conn.commit()
+                        query = ("SELECT DISTINCT * FROM biz_cardstore")
+                        nk.execute(query)
+                        x = nk.fetchall()
+                        fetch = pd.DataFrame(x, columns=['Name', 'Designation', 'Emailid', 'Website', 'Pincode', 'Mobile_number'])
+                        st.write("### Data After Deletion")
+                        st.write(fetch)
+
+
+                    delete(opt=options)
+
+
+                with tab6:
+                    query = ("SELECT DISTINCT * FROM biz_cardstore")
+                    nk.execute(query)
+                    x = nk.fetchall()
+                    fetch = pd.DataFrame(x, columns=['Name', 'Designation', 'Emailid', 'Website', 'Pincode', 'Mobile_number'])
+                    st.write("### Total No Of  Data Stored In Database")
+                    st.write(fetch)
+
+
+                    def convert_df(df):
+                        return df.to_csv().encode('utf-8')
+
+                    csv = convert_df(df=fetch)
+                    st.download_button(
+                        label="Download All data as CSV",
+                        data=csv,
+                        file_name='Total_Bizcards.csv',
+                        mime='csv')
+
+        with tab4:
+
+            st.write("#### To Update A Existing Business Card Details")
+            checkbox_value = st.checkbox("Click To Update")
+
+            if checkbox_value:
+                query = ("select * from bizcard")
+                nk.execute(query)
+                x = nk.fetchall()
+                fetch = pd.DataFrame(x,columns=['Name', 'Designation', 'Emailid', 'Website', 'Pincode', 'Mobile_number'])
+                st.table(fetch)
+
+
+                query = ('select  "Name" from bizcard')
+                nk.execute(query)
+                x = nk.fetchall()
+                fetch = pd.DataFrame(x, columns=["Name"])
+
+                query1 = (f"SELECT column_name FROM information_schema.columns WHERE table_name = 'bizcard'")
+                nk.execute(query1)
+                x = nk.fetchall()
+                column_names = [i[0] for i in x]
+
+                options = st.radio("Select Required Field to Update", column_names)
+                col = st.text_area('Enter the Corresponding Value', str('''                  '''))
+                if st.button("UPDATE"):
+
+                    query2 =  ('update  bizcard set  \"{choice}\" = %s  where "Name" = \'{name}\'').format(name =fetch['Name'][0],choice=options)
+                    nk.execute(query2, (col,))
+                    conn.commit()
+
+                    query3 = ("SELECT * FROM bizcard")
+                    nk.execute(query3)
+                    x = nk.fetchall()
+                    fetch = pd.DataFrame(x,columns=['Name', 'Designation', 'Emailid', 'Website', 'Pincode', 'Mobile_number'])
+                    st.dataframe(fetch)
+
+                query = ("select * from bizcard")
+                nk.execute(query)
+                x = nk.fetchall()
+                fetch = pd.DataFrame(x, columns=['Name', 'Designation', 'Emailid', 'Website', 'Pincode','Mobile_number'])
+
+
+                def convert_df(df):
+                    return df.to_csv().encode('utf-8')
+                csv = convert_df(df=fetch)
+                st.download_button(
+                    label="Download data as CSV",
+                    data=csv,
+                    file_name='Updated_Bizcard.csv',
+                    mime='csv')
+
 
 
 if opt == 'WorkFlow':
@@ -203,8 +309,9 @@ if opt == 'WorkFlow':
     st.write("- Streamlit applictaion should be  carefully design and plan the application structure to ensure that it is scalable, maintainable, and extensible.")
 
 
+
+
 if opt == 'Outcomes':
-    # st.header("APPLICATIONS OF THIS PROJECT")
     st.header("Usage Of Business Card Extraction")
     st.write("#### 1.Contact Information")
     st.write("- Business cards typically contain contact details such as names, phone numbers, email addresses, and company information. ")
