@@ -18,6 +18,16 @@ conn = psycopg2.connect(
 )
 nk = conn.cursor()
 
+conn = psycopg2.connect(
+    host=st.secrets['host'],
+    user=st.secrets['user'],
+    password=st.secrets['password'],
+    port=st.secrets['port'],
+    database=st.secrets['database']
+)
+
+
+
 # creating connection btwn psycopg2 and postgressql to insert a dataframe
 engine = create_engine('postgresql+psycopg2://postgres:naresh@localhost/businesscard')
 
