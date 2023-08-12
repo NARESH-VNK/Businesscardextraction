@@ -1,0 +1,6 @@
+easyocr
+pandas==1.5.3
+psycopg2
+SQLAlchemy
+streamlit
+Pillow
